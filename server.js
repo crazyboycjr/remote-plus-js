@@ -83,8 +83,28 @@ function start_udp_server() {
 		console.log(err);
 	});
 
-	let user_pool = new Map();
+	let send_buffer = new Map();
+	function send_package(type, no, data) {
+
+		if (!send_buffer.has(no)) {
+			let msg_no = Buffer.from(no);
+			let msg_len = Buffer.from(data.length);
+			let msg_text = Buffer.from(data);
+
+			assert(data !== '');
+			send_buffer.set(no, [msg_no, msg_len, msg_text]);
+		}
+
+		socket.send(send_buffer.get(no), PORT, HOST, (err) => {
+			console.log(err);
+			socket.close();	
+		});
+	}
+
+	let ans = '';
+	//let user_pool = new Map(); 先不考虑多个人同时搞server的情况 
 	socket.on('message', (msg, rinfo) => {
+		msg = Buffer.from(msg);
 		console.log('Received %d bytes from %s:%d\n',
 			msg.length, rinfo.address, rinfo.port);
 
@@ -92,13 +112,32 @@ function start_udp_server() {
 
 		//socket.send(util.inspect(udpMap.get(key)), rinfo.port, rinfo.address);
 		
-		if (msg[0] == 0x0) {
-
-		} else if (msg[0] == 0x1) {
-		} else {
-			console.log('msg type error');
-			assert(0);
+		switch (msg[0]) {
+			case 0x0:
+				let no = msg.readInt32LE(1);
+				let sz = msg.readInt16LE(5);
+				if (sz + 7 !== msg.length) // re-send
+					send_package(0x1, no, '');
+				else {
+					if (no === 0) { // send ACK
+						send_package(0x2, 0, '');
+					} else {
+						ans = msg.toString('utf8', 7, sz);
+					}
+				}
+				break;
+			case 0x1:
+				let no = msg.readInt32LE(1);
+				console.log('resend no = ', no);
+				send_package(0x0, no, '');
+				break;
+			case 0x2:
+				break;
+			default:
+				console.log('msg TYPE error');
+				assert(0);
 		}
+
 	});
 
 }

@@ -3,6 +3,8 @@
 const net = require('net');
 const dgram = require('dgram');
 const assert = require('assert');
+const EventEmitter = require('events');
+class MyEmitter extends EventEmitter {}
 
 var HOST = '127.0.0.1';
 var PORT = '12345';
@@ -50,7 +52,8 @@ function udp_send(num1, num2) {
 	num1 = String(num1);
 	num2 = String(num2);
 
-	var PACKLEN = 512;
+	const PACKLEN = 512;
+	let emitter = new MyEmitter();
 
 	let socket = dgram.createSocket('udp4');
 	socket.on('error', (err) => {
@@ -76,18 +79,34 @@ function udp_send(num1, num2) {
 		});
 	}
 
+	function timeouter() {
+		console.log('confirm PACKAGE send timeout');
+		assert(0);
+	}
+
+	function confirm_send(type, no ,data, callback) {
+		send_package(type, no, data);
+		let timer = setTimeout(timeouter, TIMTOUT);
+		emitter.once('ACK', () => {
+			clearTimtout(timer);
+			callback();
+		});
+	}
+
 	function send_data(data) {
 
-		send_package(0, String(data.length));
+		//send_package(0x0, 0, String(data.length));
+		confirm_send(0x0, 0, String(data.length), () => {
 
-		let pos = 0, no = 1;
-		for (; pos < data.length; pos += PACKLEN, no++) {
-			let len = PACKLEN;
-			if (pos + len > data.length)
-				len = data.length - pos;
+			let pos = 0, no = 1;
+			for (; pos < data.length; pos += PACKLEN, no++) {
+				let len = PACKLEN;
+				if (pos + len > data.length)
+					len = data.length - pos;
 
-			send_package(1, no, data.substr(data, len));
-		}
+				send_package(0x0, no, data.substr(data, len));
+			}
+		});
 	}
 
 	let data = num1 + ' ' + num2;
@@ -98,26 +117,30 @@ function udp_send(num1, num2) {
 	socket.on('message', (msg, rinfo) => {
 		msg = Buffer.from(msg);
 		// Check msg TYPE
-		if (msg[0] == 0x1) { // RSD
-			
-			// We need to resend the package
-			let no = msg.readInt32BE(1);
-			console.log('resend no = ', no);
-			send_package(1, no, '');
+		switch (msg[0]) {
+			case 0x0: // NOR
+				let no = msg.readInt32LE(1);
+				let sz = msg.readInt16LE(5);
 
-		} else if (msg[0] == 0x0) { // NOR
+				assert(sz > 0);
+				assert(msg.length === 1 + 4 + 2 + sz);
 
-			let no = msg.readInt32BE(1);
-			let sz = msg.readInt16BE(5);
-			
-			assert(sz > 0);
-			assert(msg.length === 1 + 4 + 2 + sz);
+				ans += msg.toString('utf8', 7, sz);
 
-			ans += msg.toString('utf8', 7, sz);
+				break;
+			case 0x1: // RSD
+				// We need to resend the package
+				let no = msg.readInt32LE(1);
+				console.log('resend no = ', no);
+				send_package(0x0, no, '');
 
-		} else {
-			console.log('msg TYPE error');
-			assert(0);
+				break;
+			case 0x2: // ACK
+				emitter.emit('ACK');
+				break;
+			default:
+				console.log('msg TYPE error');
+				assert(0);
 		}
 	});
 

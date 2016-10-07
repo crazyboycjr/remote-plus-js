@@ -1,0 +1,29 @@
+为了做到udp环境下的容错
+我设计了如下的机制
+
+发送方目标是发送一段文本，由于udp的不可靠性，我们需要将一段文本
+切分为许多PACKAGE，每个PACKAGE具体组成如下:
+
+        +-----+----+----+------------+
+        |TYPE | NO | SZ |    TEXT    |
+        +-----+----+----+------------+
+        |  1  |  4 |  2 | 0 to 65535 |
+        +-----+----+----+------------+
+
+The value currently defined for TYPE are:
+
+		o X'00' NOR (normal)
+		o X'01' RSD (re-send)
+		o X'02' ACK (confirm)
+
+On client(sender), for NO = 0, its TEXT represents total number of PACKAGES.
+So we firstly send the PACKAGE which NO = 0, and confirm it is successfully
+received by server(receiver). The server checks the TYPE field of a PACKAGE,
+if its a NOR PACKAGE and its NO is 0, the server must reply with a ACK PACKAGE
+which TYPE field is set to X'02' and the other fields do not have a specific
+definiation.
+
+On server(receiver), the server sort all PACKAGES by it NO. For the PACKAGE
+which server did not receive or SZ unequal to TEXT's length, server should ask
+for the client re-sending corresponding PACKAGE by send the client a PACKAGE
+which TYPE is set to X'01'.
