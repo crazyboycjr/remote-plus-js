@@ -61,21 +61,32 @@ function udp_send(num1, num2) {
 		socket.close();
 	});
 
+	function resize(arr, nsz, dv) {
+		while (nsz > arr.length)
+			arr.push(dv);
+		arr.length = nsz;
+	}
+
 	let send_buffer = new Map();
-	function send_package(type, no, data) {
+	function send_package(type, no, data, rinfo) {
 
-		if (!send_buffer.has(no)) {
-			let msg_no = Buffer.from(no);
-			let msg_len = Buffer.from(data.length);
-			let msg_text = Buffer.from(data);
+		let key = (type << 4) | no;
+		if (!send_buffer.has(key)) {
 
-			assert(data !== '');
-			send_buffer.set(no, [msg_no, msg_len, msg_text]);
+			let buf = Buffer.alloc(7 + data.length);
+			buf.writeUInt8(type);
+			buf.writeUInt32LE(no, 1);
+			buf.writeUInt16LE(data.length, 5);
+			buf.write(data, 7);
+
+			send_buffer.set(key, buf);
 		}
 
-		socket.send(send_buffer.get(no), PORT, HOST, (err) => {
-			console.log(err);
-			socket.close();	
+		socket.send(send_buffer.get(key), rinfo.port, rinfo.address, (err) => {
+			if (err) {
+				console.log(err);
+				socket.close();
+			}
 		});
 	}
 
@@ -84,19 +95,19 @@ function udp_send(num1, num2) {
 		assert(0);
 	}
 
-	function confirm_send(type, no ,data, callback) {
-		send_package(type, no, data);
-		let timer = setTimeout(timeouter, TIMTOUT);
+	function confirm_send(type, no ,data, rinfo, callback) {
+		send_package(type, no, data, rinfo);
+		let timer = setTimeout(timeouter, TIMEOUT);
 		emitter.once('ACK', () => {
-			clearTimtout(timer);
+			clearTimeout(timer);
 			callback();
 		});
 	}
 
-	function send_data(data) {
+	function send_data(data, rinfo) {
 
-		//send_package(0x0, 0, String(data.length));
-		confirm_send(0x0, 0, String(data.length), () => {
+		//send_package(0x0, 0, String(data.length), rinfo);
+		confirm_send(0x0, 0, String(Math.ceil(data.length / PACKLEN)), rinfo, () => {
 
 			let pos = 0, no = 1;
 			for (; pos < data.length; pos += PACKLEN, no++) {
@@ -104,38 +115,72 @@ function udp_send(num1, num2) {
 				if (pos + len > data.length)
 					len = data.length - pos;
 
-				send_package(0x0, no, data.substr(data, len));
+				send_package(0x0, no, data.substr(pos, len), rinfo);
 			}
 		});
 	}
 
 	let data = num1 + ' ' + num2;
-	send_data(data);
+	let rinfo = {port: PORT, address: HOST};
+	send_data(data, rinfo);
 
 	let ans = '';
-	
+	let ans_piece = new Array();
+	let total = 0, now = 0;
+	let polling_id = 0;
+	//
+	function polling(rinfo) {
+		for (let i = 0; i < ans_piece.length; i++)
+			if (ans_piece[i].length === 0)
+				send_package(0x1, i, '', rinfo);
+	}	
+
 	socket.on('message', (msg, rinfo) => {
 		msg = Buffer.from(msg);
+		console.log('\nReceived %d bytes from %s:%d',
+			msg.length, rinfo.address, rinfo.port);
+		console.log('receive msg = ', msg);
+		
 		// Check msg TYPE
+		let no, sz;
 		switch (msg[0]) {
 			case 0x0: // NOR
-				let no = msg.readInt32LE(1);
-				let sz = msg.readInt16LE(5);
+				no = msg.readInt32LE(1);
+				sz = msg.readInt16LE(5);
+				if (sz + 7 !== msg.length) // re-send
+					send_package(0x1, no, '', rinfo);
+				else {
+					if (no === 0) { // send ACK
+						console.log('send ACK');
+						send_package(0x2, 0, '', rinfo);
+						
+						total = Number(msg.toString('utf8', 7));
+						resize(ans_piece, total + 1, '');
 
-				assert(sz > 0);
-				assert(msg.length === 1 + 4 + 2 + sz);
+						polling_id = setInterval(() => { polling(rinfo); }, 100);
 
-				ans += msg.toString('utf8', 7, sz);
-
+					} else {
+						if (ans_piece[no].length === 0)
+							now++;
+						ans_piece[no] = msg.toString('utf8', 7);
+						if (now === total) {
+							clearInterval(polling_id);
+							for (let i = 1; i < ans_piece.length; i++)
+								ans += ans_piece[i];
+							emitter.emit('done', ans, rinfo);
+						}
+					}
+				}	
 				break;
 			case 0x1: // RSD
 				// We need to resend the package
-				let no = msg.readInt32LE(1);
+				no = msg.readInt32LE(1);
 				console.log('resend no = ', no);
-				send_package(0x0, no, '');
+				send_package(0x0, no, '', rinfo);
 
 				break;
 			case 0x2: // ACK
+				console.log('receive ACK');
 				emitter.emit('ACK');
 				break;
 			default:
@@ -144,4 +189,12 @@ function udp_send(num1, num2) {
 		}
 	});
 
+	emitter.once('done', (ans, rinfo) => {
+		console.log('The returned ans = ', ans);
+		socket.close();
+	});
+
 }
+
+//tcp_send('123', '456');
+udp_send('123', '45699');
