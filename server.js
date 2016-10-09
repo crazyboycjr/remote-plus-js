@@ -1,4 +1,5 @@
 'use strict';
+
 const net = require('net');
 const dgram = require('dgram');
 const util = require('util');
@@ -95,11 +96,29 @@ function start_udp_server() {
 		arr.length = nsz;
 	}
 
+	class User {
+		constructor() {
+			this.ans = '';
+			this.ans_piece = new Array();
+			this.total = 0;
+			this.now = 0;
+			this.polling_id = 0;
+			this.send_buffer = new Map();
+		}
+	}
+
+	let user_pool = new Map();
+	/*
 	let send_buffer = new Map();
+	*/
 	function send_package(type, no, data, rinfo) {
 
-		let key = (type << 4) | no;
-		if (!send_buffer.has(key)) {
+		let user_key = util.format('%s:%s', rinfo.address, rinfo.port);
+		console.log('when send_pkg, user_key = ', user_key);
+		let u = user_pool.get(user_key);
+
+		let key = {first: (type << 4) | no, second: rinfo};
+		if (!u.send_buffer.has(key)) {
 
 			let buf = Buffer.alloc(7 + data.length);
 			buf.writeUInt8(type);
@@ -107,13 +126,13 @@ function start_udp_server() {
 			buf.writeUInt16LE(data.length, 5);
 			buf.write(data, 7);
 			
-			send_buffer.set(key, buf);
+			u.send_buffer.set(key, buf);
 		}
 
-		console.log('send content = ', send_buffer.get(key));
+		console.log('send content = ', u.send_buffer.get(key));
 		console.log('send rinfo = ', rinfo);
 
-		socket.send(send_buffer.get(key), rinfo.port, rinfo.address, (err) => {
+		socket.send(u.send_buffer.get(key), rinfo.port, rinfo.address, (err) => {
 			if (err) {
 				console.log(err);
 				socket.end();
@@ -121,23 +140,31 @@ function start_udp_server() {
 		});
 	}
 
-	function timeouter() {
-		console.log('confirm PACKAGE send timeout');
-		assert(0);
-	}
+
 
 	function confirm_send(type, no ,data, rinfo, callback) {
+
+		let user_key = util.format('%s:%s', rinfo.address, rinfo.port);
+
 		send_package(type, no, data, rinfo);
+
+		function timeouter() {
+			console.log('confirm PACKAGE send timeout');
+			assert(0);
+		}
+
 		let timer = setTimeout(timeouter, TIMEOUT);
-		emitter.once('ACK', () => {
+		emitter.on('ACK' + user_key, () => {
 			clearTimeout(timer);
 			callback();
 		});
 	}
 
+	// this function split whole data into chunks(PACKAGES) and send it async.
 	function send_data(data, rinfo) {
 
 		//send_package(0x0, 0, String(data.length), rinfo);
+		console.log('send_data:', data, rinfo);
 		confirm_send(0x0, 0, String(Math.ceil(data.length / PACKLEN)), rinfo, () => {
 
 			console.log('data = %s, datalen = %d', data, data.length);
@@ -153,14 +180,20 @@ function start_udp_server() {
 		});
 	}
 
+	/*
 	let ans = '';
 	let ans_piece = new Array();
 	let total = 0, now = 0;
 	let polling_id = 0;
+	*/
 	//
 	function polling(rinfo) {
-		for (let i = 0; i < ans_piece.length; i++)
-			if (ans_piece[i].length === 0)
+		console.log('polling msg:');
+		let user_key = util.format('%s:%s', rinfo.address, rinfo.port);
+		let u = user_pool.get(user_key);
+
+		for (let i = 0; i < u.ans_piece.length; i++)
+			if (u.ans_piece[i].length === 0)
 				send_package(0x1, i, '', rinfo);
 	}
 	
@@ -172,7 +205,14 @@ function start_udp_server() {
 
 		console.log('receive msg = ', msg);
 
-		//let key = util.format('%s:%s', rinfo.address, rinfo.port);
+		let key = util.format('%s:%s', rinfo.address, rinfo.port);
+		console.log('when recv msg, user_key = ', key);
+		if (!user_pool.has(key)) {
+			user_pool.set(key, new User);
+		}
+		// Here by javascript feature, we have got a reference to user_pool[key]
+		// thus, when u's value is change, user_po0l[key] will change too.
+		let u = user_pool.get(key);
 
 		//socket.send(util.inspect(udpMap.get(key)), rinfo.port, rinfo.address);
 		
@@ -191,21 +231,22 @@ function start_udp_server() {
 						console.log('send ACK');
 						send_package(0x2, 0, '', rinfo);
 
-						total = Number(msg.toString('utf8', 7));
+						u.total = Number(msg.toString('utf8', 7));
 						
-						console.log('PACKAGE 0 total = %d', total);
+						console.log('PACKAGE 0 total = %d', u.total);
 
-						resize(ans_piece, total + 1, '');
-						polling_id = setInterval(() => { polling(rinfo); }, 100);
+						resize(u.ans_piece, u.total + 1, '');
+						u.polling_id = setInterval(() => { polling(rinfo); }, 100);
 					} else {
-						if (ans_piece[no].length === 0)
-							now++;
-						ans_piece[no] = msg.toString('utf8', 7);
-						if (now === total) {
-							clearInterval(polling_id);
-							for (let i = 1; i < ans_piece.length; i++)
-								ans += ans_piece[i];
-							emitter.emit('done', ans, rinfo);
+						if (u.ans_piece[no].length === 0)
+							u.now++;
+						u.ans_piece[no] = msg.toString('utf8', 7);
+						if (u.now === u.total) {
+							clearInterval(u.polling_id);
+							for (let i = 1; i < u.ans_piece.length; i++)
+								u.ans += u.ans_piece[i];
+							console.log(u, rinfo);
+							emitter.emit('done', u.ans, rinfo);
 						}
 					}
 				}
@@ -217,7 +258,12 @@ function start_udp_server() {
 				break;
 			case 0x2:
 				console.log('receive ACK');
-				emitter.emit('ACK');
+				emitter.emit('ACK' + key);
+				break;
+			case 0x3:
+				console.log('receive FIN');
+				send_package(0x3, 0, '', rinfo); // no need to confirm_send 因为对方如果没有接受到这个FIN，还会继续发FIN给我
+				clear_user(rinfo); // clear the info recorded for the client
 				break;
 			default:
 				console.log('msg TYPE error');
@@ -226,7 +272,7 @@ function start_udp_server() {
 
 	});
 
-	emitter.once('done', (text, rinfo) => {
+	emitter.on('done', (text, rinfo) => {
 		console.log('text =', text);
 		let [num1, num2] = text.split(' ');
 		console.log('num1 = %s, num2 = %s', num1, num2);
@@ -235,6 +281,11 @@ function start_udp_server() {
 
 		send_data(res, rinfo);
 	});
+
+	function clear_user(rinfo) {
+		let key = util.format('%s:%s', rinfo.address, rinfo.port);
+		user_pool.delete(key);
+	}
 
 }
 
@@ -247,7 +298,7 @@ start_udp_server();
 
 
 
-
+// A simple BigInteger Plus
 function add(a, b) {
 	a = Array.from(a).reverse().map(Number);
 	b = Array.from(b).reverse().map(Number);

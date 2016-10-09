@@ -15,6 +15,7 @@ The value currently defined for TYPE are:
 		o X'00' NOR (normal)
 		o X'01' RSD (re-send)
 		o X'02' ACK (confirm)
+		o X'03' FIN (finish)
 
 On client(sender), for NO = 0, its TEXT represents total number of PACKAGES.
 So we firstly send the PACKAGE which NO = 0, and confirm it is successfully
@@ -27,3 +28,12 @@ On server(receiver), the server sort all PACKAGES by it NO. For the PACKAGE
 which server did not receive or SZ unequal to TEXT's length, server should ask
 for the client re-sending corresponding PACKAGE by send the client a PACKAGE
 which TYPE is set to X'01'.
+
+On client(sender), when client receive the whole result as it expects, client
+should send a FIN PACKAGE, once server(receiver) respond with an FIN PACKAGE,
+it should close the socket and interupt the (fake-)connection.
+
+On server(receiver), when receiving a FIN PACKAGE, server should send an FIN
+PACKAGE to client, and anyhow clear its cache recorded for this client.
+
+For RSD, ACK, FIN, the NO and SZ are recommended to be set to X'00'.
