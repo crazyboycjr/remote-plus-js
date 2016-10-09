@@ -2,6 +2,7 @@
 
 const net = require('net');
 const dgram = require('dgram');
+const util = require('util');
 const assert = require('assert');
 const EventEmitter = require('events');
 class MyEmitter extends EventEmitter {}
@@ -67,11 +68,29 @@ function udp_send(num1, num2) {
 		arr.length = nsz;
 	}
 
+	class User {
+		constructor() {
+			this.ans = '';
+			this.ans_piece = new Array();
+			this.total = 0;
+			this.now = 0;
+			this.polling_id = 0;
+			this.send_buffer = new Map();
+		}
+	}
+
+	let user_pool = new Map();
+
+	/*
 	let send_buffer = new Map();
+	*/
 	function send_package(type, no, data, rinfo) {
 
-		let key = (type << 4) | no;
-		if (!send_buffer.has(key)) {
+		let user_key = util.format('%s:%s', rinfo.address, rinfo.port);
+		let u = user_pool.get(user_key);
+
+		let key = {first: (type << 4) | no, second: rinfo};
+		if (!u.send_buffer.has(key)) {
 
 			let buf = Buffer.alloc(7 + data.length);
 			buf.writeUInt8(type);
@@ -79,10 +98,10 @@ function udp_send(num1, num2) {
 			buf.writeUInt16LE(data.length, 5);
 			buf.write(data, 7);
 
-			send_buffer.set(key, buf);
+			u.send_buffer.set(key, buf);
 		}
 
-		socket.send(send_buffer.get(key), rinfo.port, rinfo.address, (err) => {
+		socket.send(u.send_buffer.get(key), rinfo.port, rinfo.address, (err) => {
 			if (err) {
 				console.log(err);
 				socket.close();
@@ -90,15 +109,18 @@ function udp_send(num1, num2) {
 		});
 	}
 
-	function timeouter() {
-		console.log('confirm PACKAGE send timeout');
-		assert(0);
-	}
+
 
 	function confirm_send(type, no ,data, rinfo, callback) {
+
 		send_package(type, no, data, rinfo);
-		let timer = setTimeout(timeouter, TIMEOUT);
-		emitter.once('ACK', () => {
+
+		function timeouter() {
+			console.log('confirm PACKAGE send timeout');
+			assert(0);
+		}		let timer = setTimeout(timeouter, TIMEOUT);
+
+		emitter.on('ACK', () => {
 			clearTimeout(timer);
 			callback();
 		});
@@ -106,6 +128,11 @@ function udp_send(num1, num2) {
 
 	function send_data(data, rinfo) {
 
+		let key = util.format('%s:%s', rinfo.address, rinfo.port);
+		if (!user_pool.has(key)) {
+			user_pool.set(key, new User);
+		}
+		
 		//send_package(0x0, 0, String(data.length), rinfo);
 		confirm_send(0x0, 0, String(Math.ceil(data.length / PACKLEN)), rinfo, () => {
 
@@ -124,16 +151,21 @@ function udp_send(num1, num2) {
 	let rinfo = {port: PORT, address: HOST};
 	send_data(data, rinfo);
 
+	/*
 	let ans = '';
 	let ans_piece = new Array();
 	let total = 0, now = 0;
 	let polling_id = 0;
+	*/
 	//
 	function polling(rinfo) {
-		for (let i = 0; i < ans_piece.length; i++)
-			if (ans_piece[i].length === 0)
+		let user_key = util.format('%s:%s', rinfo.address, rinfo.port);
+		let u = user_pool.get(user_key);
+
+		for (let i = 0; i < u.ans_piece.length; i++)
+			if (u.ans_piece[i].length === 0)
 				send_package(0x1, i, '', rinfo);
-	}	
+	}
 
 	socket.on('message', (msg, rinfo) => {
 		msg = Buffer.from(msg);
@@ -141,6 +173,14 @@ function udp_send(num1, num2) {
 			msg.length, rinfo.address, rinfo.port);
 		console.log('receive msg = ', msg);
 		
+		let key = util.format('%s:%s', rinfo.address, rinfo.port);
+		if (!user_pool.has(key)) {
+			user_pool.set(key, new User);
+		}
+		// Here by javascript feature, we have got a reference to user_pool[key]
+		// thus, when u's value is change, user_pool[key] will change too.
+		let u = user_pool.get(key);
+
 		// Check msg TYPE
 		let no, sz;
 		switch (msg[0]) {
@@ -154,20 +194,20 @@ function udp_send(num1, num2) {
 						console.log('send ACK');
 						send_package(0x2, 0, '', rinfo);
 						
-						total = Number(msg.toString('utf8', 7));
-						resize(ans_piece, total + 1, '');
+						u.total = Number(msg.toString('utf8', 7));
+						resize(u.ans_piece, u.total + 1, '');
 
-						polling_id = setInterval(() => { polling(rinfo); }, 100);
+						u.polling_id = setInterval(() => { polling(rinfo); }, 100);
 
 					} else {
-						if (ans_piece[no].length === 0)
-							now++;
-						ans_piece[no] = msg.toString('utf8', 7);
-						if (now === total) {
-							clearInterval(polling_id);
-							for (let i = 1; i < ans_piece.length; i++)
-								ans += ans_piece[i];
-							emitter.emit('done', ans, rinfo);
+						if (u.ans_piece[no].length === 0)
+							u.now++;
+						u.ans_piece[no] = msg.toString('utf8', 7);
+						if (u.now === u.total) {
+							clearInterval(u.polling_id);
+							for (let i = 1; i < u.ans_piece.length; i++)
+								u.ans += u.ans_piece[i];
+							emitter.emit('done', u.ans, rinfo);
 						}
 					}
 				}	
@@ -183,18 +223,36 @@ function udp_send(num1, num2) {
 				console.log('receive ACK');
 				emitter.emit('ACK');
 				break;
+			case 0x3:
+				console.log('receive FIN');
+				console.log('Connection finish.');
+				emitter.emit('FIN');
+				break;
 			default:
 				console.log('msg TYPE error');
 				assert(0);
 		}
 	});
 
-	emitter.once('done', (ans, rinfo) => {
+	emitter.on('done', (ans, rinfo) => {
 		console.log('The returned ans = ', ans);
-		socket.close();
+
+		function timeouter() {
+			console.log('wait for FIN PACKAGE timeout');
+			send_package(0x3, 0, '', rinfo); // re-send FIN PACKAGE if fail to recv FIN
+		}
+		let timer = setInterval(timeouter, TIMEOUT);
+		emitter.on('FIN', () => {
+			clearInterval(timer);
+			
+			let user_key = util.format('%s:%s', rinfo.address, rinfo.port);
+			user_pool.delete(user_key);
+
+			socket.close();
+		});
 	});
 
 }
 
 //tcp_send('123', '456');
-udp_send('123', '45699');
+udp_send('111111239999', '9999999999999999999945690009');
