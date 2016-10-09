@@ -192,7 +192,7 @@ function start_udp_server() {
 		let user_key = util.format('%s:%s', rinfo.address, rinfo.port);
 		let u = user_pool.get(user_key);
 
-		for (let i = 0; i < u.ans_piece.length; i++)
+		for (let i = 1; i < u.ans_piece.length; i++)
 			if (u.ans_piece[i].length === 0)
 				send_package(0x1, i, '', rinfo);
 	}
@@ -238,15 +238,16 @@ function start_udp_server() {
 						resize(u.ans_piece, u.total + 1, '');
 						u.polling_id = setInterval(() => { polling(rinfo); }, 100);
 					} else {
-						if (u.ans_piece[no].length === 0)
+						if (u.ans_piece[no].length === 0) {
 							u.now++;
-						u.ans_piece[no] = msg.toString('utf8', 7);
-						if (u.now === u.total) {
-							clearInterval(u.polling_id);
-							for (let i = 1; i < u.ans_piece.length; i++)
-								u.ans += u.ans_piece[i];
-							console.log(u, rinfo);
-							emitter.emit('done', u.ans, rinfo);
+							u.ans_piece[no] = msg.toString('utf8', 7);
+							if (u.now === u.total) {
+								clearInterval(u.polling_id);
+								for (let i = 1; i < u.ans_piece.length; i++)
+									u.ans += u.ans_piece[i];
+								console.log(u, rinfo);
+								emitter.emit('done', u.ans, rinfo);
+							}
 						}
 					}
 				}

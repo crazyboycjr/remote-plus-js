@@ -7,7 +7,7 @@ const assert = require('assert');
 const EventEmitter = require('events');
 class MyEmitter extends EventEmitter {}
 
-var HOST = '127.0.0.1';
+var HOST = 'linode2';
 var PORT = '12345';
 const TIMEOUT = 1000;
 
@@ -53,7 +53,7 @@ function udp_send(num1, num2) {
 	num1 = String(num1);
 	num2 = String(num2);
 
-	const PACKLEN = 512;
+	const PACKLEN = 12;
 	let emitter = new MyEmitter();
 
 	let socket = dgram.createSocket('udp4');
@@ -133,8 +133,11 @@ function udp_send(num1, num2) {
 			user_pool.set(key, new User);
 		}
 		
+		console.log('send_data:', data, rinfo);
 		//send_package(0x0, 0, String(data.length), rinfo);
 		confirm_send(0x0, 0, String(Math.ceil(data.length / PACKLEN)), rinfo, () => {
+
+			console.log('data = %s, datalen = %d', data, data.length);
 
 			let pos = 0, no = 1;
 			for (; pos < data.length; pos += PACKLEN, no++) {
@@ -159,10 +162,11 @@ function udp_send(num1, num2) {
 	*/
 	//
 	function polling(rinfo) {
+		console.log('polling msg:');
 		let user_key = util.format('%s:%s', rinfo.address, rinfo.port);
 		let u = user_pool.get(user_key);
 
-		for (let i = 0; i < u.ans_piece.length; i++)
+		for (let i = 1; i < u.ans_piece.length; i++)
 			if (u.ans_piece[i].length === 0)
 				send_package(0x1, i, '', rinfo);
 	}
@@ -200,14 +204,16 @@ function udp_send(num1, num2) {
 						u.polling_id = setInterval(() => { polling(rinfo); }, 100);
 
 					} else {
-						if (u.ans_piece[no].length === 0)
+						if (u.ans_piece[no].length === 0) {
 							u.now++;
-						u.ans_piece[no] = msg.toString('utf8', 7);
-						if (u.now === u.total) {
-							clearInterval(u.polling_id);
-							for (let i = 1; i < u.ans_piece.length; i++)
-								u.ans += u.ans_piece[i];
-							emitter.emit('done', u.ans, rinfo);
+							u.ans_piece[no] = msg.toString('utf8', 7);
+							if (u.now === u.total) {
+								clearInterval(u.polling_id);
+								for (let i = 1; i < u.ans_piece.length; i++)
+									u.ans += u.ans_piece[i];
+								console.log(u, rinfo);
+								emitter.emit('done', u.ans, rinfo);
+							}
 						}
 					}
 				}	
@@ -255,4 +261,4 @@ function udp_send(num1, num2) {
 }
 
 //tcp_send('123', '456');
-udp_send('111111239999', '9999999999999999999945690009');
+udp_send('111111239999', '9999999999999999999999999999999999999999999999999999999999999999999945690009');

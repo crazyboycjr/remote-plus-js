@@ -37,3 +37,6 @@ On server(receiver), when receiving a FIN PACKAGE, server should send an FIN
 PACKAGE to client, and anyhow clear its cache recorded for this client.
 
 For RSD, ACK, FIN, the NO and SZ are recommended to be set to X'00'.
+
+对于连接建立后(第0个 NOR 包收到之后)，server 端应当每隔一段较短时间(50ms)，判断
+有哪些包还未收到，并发送 RSD 给 client.
