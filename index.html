@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Remote Plus Client</title>
+		<link rel="stylesheet" href="style.css">
+		<script src="jquery.js"></script>
+	</head>
+	<body>
+		<script>
+			'use strict';
+			let client = require('./client');
+		</script>
+		<div id="content">
+			<h1>Please Input Two BigIntegers</h1>
+			<form>
+				<label>Host: <input type="text" name="host" value="linode2"/></label>
+				<label>Port: <input type="text" name="port" value="12345"/></label>
+				<br>
+				<input type="radio" name="transfer" value="udp" checked>UDP
+				<input type="radio" name="transfer" value="tcp">TCP
+			</form>
+
+			<div>
+				<textarea id="num1"></textarea>
+				+
+				<textarea id="num2"></textarea>
+				=
+				<textarea id="num3"></textarea>
+			</div>
+			<div>
+				<button>Submit</button>
+			</div>
+
+		</div>
+		<script>
+
+			$(document).ready(() => {
+				$('textarea').prop("rows", 10).prop("cols", 30);
+				$('button').click(() => {
+
+					let HOST = $('input[name="host"]').val();
+					let PORT = $('input[name="port"]').val();
+
+					client.set_remote(HOST, PORT);
+
+					let num1 = $('#num1').val();
+					let num2 = $('#num2').val();
+					$('#num3').val('');
+					let method = $('input[name="transfer"][value="udp"]').is(":checked");
+					let Q;
+					if (method) {
+						Q = client.udp_send(num1, num2);
+					} else {
+						Q = client.tcp_send(num1, num2);
+					}
+					Q.then((ans) => {
+						$('#num3').val(ans);
+					}, (err) => {
+						console.log(err);
+						$('#num3').val(err);
+					});
+					
+				});
+			});
+
+		</script>
+	</body>
+</html>
