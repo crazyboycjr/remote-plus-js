@@ -11,9 +11,12 @@
 			'use strict';
 			let client = require('./client');
 		</script>
-		<h1>Please Input Two BigIntegers</h1>
 		<div id="content">
+			<h1>Please Input Two BigIntegers</h1>
 			<form>
+				<label>Host: <input type="text" name="host" value="linode2"/></label>
+				<label>Port: <input type="text" name="port" value="12345"/></label>
+				<br>
 				<input type="radio" name="transfer" value="udp" checked>UDP
 				<input type="radio" name="transfer" value="tcp">TCP
 			</form>
@@ -23,7 +26,7 @@
 				+
 				<textarea id="num2"></textarea>
 				=
-				<textarea id="num3" readonly></textarea>
+				<textarea id="num3"></textarea>
 			</div>
 			<div>
 				<button>Submit</button>
@@ -35,8 +38,15 @@
 			$(document).ready(() => {
 				$('textarea').prop("rows", 10).prop("cols", 30);
 				$('button').click(() => {
+
+					let HOST = $('input[name="host"]').val();
+					let PORT = $('input[name="port"]').val();
+
+					client.set_remote(HOST, PORT);
+
 					let num1 = $('#num1').val();
 					let num2 = $('#num2').val();
+					$('#num3').val('');
 					let method = $('input[name="transfer"][value="udp"]').is(":checked");
 					let Q;
 					if (method) {

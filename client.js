@@ -11,6 +11,11 @@ var HOST = 'linode2';
 var PORT = '12345';
 const TIMEOUT = 1000;
 
+exports.set_remote = function(host, port) {
+	HOST = host;
+	PORT = Number(port);
+}
+
 // num1 and num2 should be String type
 exports.tcp_send = function tcp_send(num1, num2) {
 	return new Promise((resolve, reject) => {
@@ -61,7 +66,7 @@ exports.udp_send = function udp_send(num1, num2) {
 		num1 = String(num1);
 		num2 = String(num2);
 
-		const PACKLEN = 12;
+		const PACKLEN = 512;
 		let emitter = new MyEmitter();
 
 		let socket = dgram.createSocket('udp4');
@@ -125,9 +130,12 @@ exports.udp_send = function udp_send(num1, num2) {
 			send_package(type, no, data, rinfo);
 
 			function timeouter() {
-				console.log('confirm PACKAGE send timeout');
-				assert(0);
-			}		let timer = setTimeout(timeouter, TIMEOUT);
+				let err = new Error('confirm PACKAGE send timeout');
+				console.log(err);
+				reject(err);
+				//assert(0);
+			}
+			let timer = setTimeout(timeouter, TIMEOUT);
 
 			emitter.on('ACK', () => {
 				clearTimeout(timer);

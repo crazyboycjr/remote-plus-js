@@ -2,3 +2,14 @@ textarea  {
 	resize: none;
 	text-align: center;
 }
+
+html, body {
+	height: 100%;
+	background-image: linear-gradient(-179deg, #f7f7f7 0, #ebebeb 100%);
+	text-align: center;
+}
+
+#content {
+	height: 100%;
+	text-align: center;
+}
