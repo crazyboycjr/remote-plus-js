@@ -17,7 +17,7 @@ GUI的实现使用了electron，它使用HTML系列前端技术构建桌面应�
 - proto.txt 这个文件是我设计协议说明，因为觉得RFC文档的写法很不错，就模仿了它的写法。
 - client.js 这是客户端的代码实现
 - server.js 这是服务端的代码实现
-- package.json main.js index.html style.css 这四个文件是和前端相关的代码
+- package.json main.js index.html style.css jquery.js 这四个文件是和前端相关的代码
 
 ## 使用方法
 
