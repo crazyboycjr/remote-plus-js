@@ -7,7 +7,7 @@ const assert = require('assert');
 const EventEmitter = require('events');
 class MyEmitter extends EventEmitter {}
 
-var HOST = 'linode2';
+var HOST = 'localhost';
 var PORT = '12345';
 const TIMEOUT = 1000;
 
@@ -281,5 +281,5 @@ exports.udp_send = function udp_send(num1, num2) {
 
 }
 
-//tcp_send('123', '456');
-//udp_send('111111239999', '9999999999999999999999999999999999999999999999999999999999999999999945690009');
+//exports.tcp_send('123', '456');
+//exports.udp_send('111111239999', '9999999999999999999999999999999999999999999999999999999999999999999945690009');
