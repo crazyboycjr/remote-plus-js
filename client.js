@@ -7,7 +7,7 @@ const assert = require('assert');
 const EventEmitter = require('events');
 class MyEmitter extends EventEmitter {}
 
-var HOST = 'localhost';
+var HOST = 'localhost'; //crazyboycjr.xyz Seems blocked by GFW...
 var PORT = '12345';
 const TIMEOUT = 1000;
 
